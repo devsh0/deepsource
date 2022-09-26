@@ -79,7 +79,7 @@ public class Tokeniser {
         return sourceLines.get(lineCursor).isEmpty();
     }
 
-    private void advanceLine() {
+    public void advanceLine() {
         lineCursor++;
         if (!atEndOfFile() && isLineEmpty())
             advanceLine();
@@ -90,7 +90,7 @@ public class Tokeniser {
         return sourceLines.get(lineCursor);
     }
 
-    char eatChar() {
+    private char eatChar() {
         if (atEndOfFile())
             emitFatalError("Premature end-of-file!");
 
@@ -102,7 +102,7 @@ public class Tokeniser {
         return currentLine().charAt(oldCursor);
     }
 
-    char peekChar() {
+    private char peekChar() {
         int oldLineCursor = lineCursor;
         int oldColumnCursor = columnCursor;
         var nextChar = eatChar();

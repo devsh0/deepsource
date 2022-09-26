@@ -193,4 +193,15 @@ public class ParserTest {
             // FIXME: somehow supply the error message and test if we get the right error.
         }
     }
+
+    @Test
+    public void testEmitMultipleErrors() {
+        String source = "if value == 10 {\n" +
+                "val == 10\n" +
+                "if blah = 10{}\n" +
+                "val = 20\n" +
+                "}";
+        var parser = new Parser(source);
+        parser.parse();
+    }
 }

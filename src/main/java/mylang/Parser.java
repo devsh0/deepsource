@@ -61,10 +61,13 @@ public class Parser {
             return Optional.empty();
 
         List<Statement> statementList = new ArrayList<>();
+        outer:
         while (tokeniser.peekToken().type() != Type.RBRACE) {
             var maybeNextStmt = maybeParseNextStatement();
-            if (maybeNextStmt.isEmpty())
-                return Optional.empty();
+            while (maybeNextStmt.isEmpty()) {
+                tokeniser.advanceLine();
+                continue outer;
+            }
             statementList.add(maybeNextStmt.get());
         }
 
