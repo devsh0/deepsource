@@ -1,12 +1,14 @@
 package mylang.tokeniser;
 
+import mylang.Signal;
+
 import java.util.List;
 import java.util.Optional;
 
 import static mylang.Utils.*;
 
-// FIXME: We should really decouple error reporting and tokenisation.
-public class Tokeniser {
+// FIXME: We should really decouple error reporting and tokenization.
+public class Tokenizer {
     private static final List<String> KEYWORDS = List.of("if", "val");
 
     private final List<String> sourceLines;
@@ -15,12 +17,9 @@ public class Tokeniser {
     private int lastTokenBeginIndex;
     private boolean shouldReportError = true;
 
-    public Tokeniser(String source) {
-        if (source == null) {
-            emitFatalError("Invalid input!");
-            sourceLines = null;
-            return;
-        }
+    private Tokenizer(String source) {
+        if (source == null)
+            throw new RuntimeException("Invalid input!");
         sourceLines = List.of(source.split("\n"));
         lineCursor = 0;
         columnCursor = lastTokenBeginIndex = 0;
@@ -227,4 +226,16 @@ public class Tokeniser {
         columnCursor = oldColumnCursor;
         return nextToken;
     }
+
+    public static Signal<Tokenizer> getInstance(String source) {
+        Signal<Tokenizer> signal;
+        try {
+            var tokenizer = new Tokenizer(source);
+            signal = Signal.successInstance(tokenizer);
+        } catch (RuntimeException e) {
+            signal = Signal.failureInstance(e.getMessage());
+        }
+        return signal;
+    }
+
 }

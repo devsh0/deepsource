@@ -2,7 +2,7 @@ package mylang;
 
 import mylang.ast.*;
 import mylang.ast.Number;
-import mylang.tokeniser.Tokeniser;
+import mylang.tokeniser.Tokenizer;
 import mylang.tokeniser.Type;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,19 +11,23 @@ import java.util.Optional;
 import static mylang.Utils.die;
 
 public class Parser {
-    private final Tokeniser tokeniser;
+    private final Tokenizer tokenizer;
 
     public Parser(String source) {
-        tokeniser = new Tokeniser(source);
+        var maybeTokeniser = Tokenizer.getInstance(source);
+        if (maybeTokeniser.failure())
+            // FIXME: Temporary...find a better way to handle errors.
+            throw new RuntimeException(maybeTokeniser.message());
+        tokenizer = maybeTokeniser.get();
     }
 
     private Optional<Object> maybeParseNameOrNumber() {
-        var maybeNextToken = tokeniser.eatAndMatch(Type.NAME, Type.NUMBER);
+        var maybeNextToken = tokenizer.eatAndMatch(Type.NAME, Type.NUMBER);
         return maybeNextToken.isEmpty() ? Optional.empty() : Optional.of(maybeNextToken.get());
     }
 
     private Optional<Operator> maybeParseOperator() {
-        var maybeOperator = tokeniser.eatAndMatch(Type.OPERATOR);
+        var maybeOperator = tokenizer.eatAndMatch(Type.OPERATOR);
         return maybeOperator.isEmpty() ? Optional.empty() : Optional.of(new Operator(maybeOperator.get().value()));
     }
 
@@ -39,7 +43,7 @@ public class Parser {
         var operator = maybeOp.get();
         if (operator.string().equals("=")) {
             // '=' is the only operator not allowed in conditional expression.
-            tokeniser.emitSyntaxError("Unexpected token `=`");
+            tokenizer.emitSyntaxError("Unexpected token `=`");
             return Optional.empty();
         }
 
@@ -51,42 +55,42 @@ public class Parser {
     }
 
     private Optional<Statement> maybeParseIfStatement() {
-        tokeniser.eatToken(); // "if"
+        tokenizer.eatToken(); // "if"
 
         var maybeCondExpr = maybeParseConditionExpression();
         if (maybeCondExpr.isEmpty())
             return Optional.empty();
 
-        if (tokeniser.eatAndMatch(Type.LBRACE).isEmpty())
+        if (tokenizer.eatAndMatch(Type.LBRACE).isEmpty())
             return Optional.empty();
 
         List<Statement> statementList = new ArrayList<>();
         outer:
-        while (tokeniser.peekToken().type() != Type.RBRACE) {
+        while (tokenizer.peekToken().type() != Type.RBRACE) {
             var maybeNextStmt = maybeParseNextStatement();
             while (maybeNextStmt.isEmpty()) {
-                tokeniser.advanceLine();
+                tokenizer.advanceLine();
                 continue outer;
             }
             statementList.add(maybeNextStmt.get());
         }
 
-        tokeniser.eatToken(); // "}"
+        tokenizer.eatToken(); // "}"
         return Optional.of(new IfStatement(maybeCondExpr.get(), statementList));
     }
 
     private Optional<Statement> maybeParseDeclarationStatement() {
-        tokeniser.eatToken(); // "val"
+        tokenizer.eatToken(); // "val"
 
-        var maybeName = tokeniser.eatAndMatch(Type.NAME);
+        var maybeName = tokenizer.eatAndMatch(Type.NAME);
         if (maybeName.isEmpty())
             return Optional.empty();
 
-        var maybeAssignOp = tokeniser.eatAndMatch("=");
+        var maybeAssignOp = tokenizer.eatAndMatch("=");
         if (maybeAssignOp.isEmpty())
             return Optional.empty();
 
-        var maybeNumber = tokeniser.eatAndMatch(Type.NUMBER);
+        var maybeNumber = tokenizer.eatAndMatch(Type.NUMBER);
         if (maybeNumber.isEmpty())
             return Optional.empty();
 
@@ -97,17 +101,17 @@ public class Parser {
 
     private Optional<List<Object>> maybeParseArgumentList() {
         var list = new ArrayList<>();
-        if (tokeniser.eatAndMatch(Type.LPAREN).isEmpty())
+        if (tokenizer.eatAndMatch(Type.LPAREN).isEmpty())
             return Optional.empty();
 
-        while (tokeniser.peekToken().type() != Type.RPAREN) {
+        while (tokenizer.peekToken().type() != Type.RPAREN) {
             var maybeNameOrNumber = maybeParseNameOrNumber();
             if (maybeNameOrNumber.isEmpty())
                 return Optional.empty();
 
-            var nextToken = tokeniser.peekToken();
+            var nextToken = tokenizer.peekToken();
             if (nextToken.value().equals(",")) {
-                tokeniser.eatToken();
+                tokenizer.eatToken();
                 list.add(maybeNameOrNumber.get());
                 maybeNameOrNumber = maybeParseNameOrNumber();
                 if (maybeNameOrNumber.isEmpty())
@@ -116,12 +120,12 @@ public class Parser {
             list.add(maybeNameOrNumber.get());
         }
 
-        tokeniser.eatToken(); // ")"
+        tokenizer.eatToken(); // ")"
         return Optional.of(list);
     }
 
     private Optional<Statement> maybeParseFunctionCallStatement() {
-        var maybeName = tokeniser.eatAndMatch(Type.NAME);
+        var maybeName = tokenizer.eatAndMatch(Type.NAME);
         if (maybeName.isEmpty())
             return Optional.empty();
 
@@ -135,7 +139,7 @@ public class Parser {
     }
 
     private Optional<Statement> maybeParseNextStatement() {
-        var nextToken = tokeniser.peekToken();
+        var nextToken = tokenizer.peekToken();
         if (nextToken.type() == Type.NAME)
             return maybeParseFunctionCallStatement();
 
@@ -144,15 +148,15 @@ public class Parser {
             case "if" -> maybeParseIfStatement();
             case "val" -> maybeParseDeclarationStatement();
             default -> {
-                tokeniser.emitSyntaxError("Unexpected token `%s`", tokenVal);
+                tokenizer.emitSyntaxError("Unexpected token `%s`", tokenVal);
                 yield Optional.empty();
             }
         };
     }
 
     public Statement parse() {
-        if (tokeniser.atEndOfFile())
-            tokeniser.emitFatalError("Expected a variable declaration, if, or function call statement");
+        if (tokenizer.atEndOfFile())
+            tokenizer.emitFatalError("Expected a variable declaration, if, or function call statement");
 
         // As per the grammar, only one top-level statement is allowed per program.
         var maybeNextStmt = maybeParseNextStatement();
