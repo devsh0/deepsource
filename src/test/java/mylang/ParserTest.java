@@ -1,5 +1,6 @@
 package mylang;
 
+import mylang.ast.DeclarationStatement;
 import mylang.ast.FunctionCallStatement;
 import mylang.ast.IfStatement;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
 
@@ -47,7 +50,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -58,7 +63,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -69,7 +76,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -100,7 +109,7 @@ public class ParserTest {
         if (parser.parse() instanceof IfStatement ifStatement) {
             assertTrue(ifStatement.getConditionExpression().lhs().toString().contains("value"));
             assertTrue(ifStatement.getConditionExpression().rhs().toString().contains("othervalue"));
-        }
+        } else fail();
     }
 
     @Test
@@ -119,7 +128,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -130,7 +141,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -151,14 +164,19 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
     public void testVariableDeclaration() {
         String source = "val name = 10";
         var parser = new Parser(source);
-        parser.parse();
+        if (parser.parse() instanceof DeclarationStatement stmt) {
+            assertEquals("name", stmt.name().name());
+            assertTrue(stmt.number().toString().contains("10"));
+        } else fail();
     }
 
     @Test
@@ -169,7 +187,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -180,7 +200,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
@@ -191,7 +213,9 @@ public class ParserTest {
             parser.parse();
         } catch (RuntimeException e) {
             // FIXME: somehow supply the error message and test if we get the right error.
+            return;
         }
+        fail();
     }
 
     @Test
