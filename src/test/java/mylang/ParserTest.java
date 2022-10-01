@@ -228,4 +228,49 @@ public class ParserTest {
         var parser = new Parser(source);
         parser.parse();
     }
+
+    @Test
+    public void multipleStmtInSameLine() {
+        String source = "if name == 10 {\n" +
+                "val name = 10 call()\n" +
+                "}";
+        var parser = new Parser(source);
+        if (parser.parse() instanceof IfStatement stmt) {
+            var statements = stmt.statements();
+            assertEquals(2, statements.size());
+            if (statements.get(0) instanceof DeclarationStatement decl) {
+                assertEquals("name", decl.name().name());
+                assertTrue(decl.number().toString().contains("10"));
+            } else fail();
+
+            if (statements.get(1) instanceof FunctionCallStatement call)
+                assertEquals("call", call.name().name());
+            else fail();
+        }
+    }
+
+    @Test
+    public void testNullSource() {
+        String source = null;
+        try {
+            var parser = new Parser(source);
+            parser.parse();
+        }
+        catch (RuntimeException e) {
+            assertTrue(e.getMessage().startsWith("Invalid input"));
+            return;
+        }
+        fail();
+    }
+
+    @Test
+    public void testEmptyLines() {
+        String source = "if value == 10 {\n\n" +
+                "val name == 10\n" +
+                "call\n" +
+                "(" +
+                "\n}\n";
+        var parser = new Parser(source);
+        parser.parse();
+    }
 }
