@@ -16,9 +16,12 @@ public class Tokeniser {
     private boolean shouldReportError = true;
 
     public Tokeniser(String source) {
-        String sourceCode;
-        sourceCode = source;
-        sourceLines = List.of(sourceCode.split("\n"));
+        if (source == null) {
+            emitFatalError("Invalid input!");
+            sourceLines = null;
+            return;
+        }
+        sourceLines = List.of(source.split("\n"));
         lineCursor = 0;
         columnCursor = lastTokenBeginIndex = 0;
     }
