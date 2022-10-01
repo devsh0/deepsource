@@ -35,7 +35,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().startsWith("Unexpected operator"));
             return;
         }
         fail();
@@ -49,7 +49,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("LBRACE"));
             return;
         }
         fail();
@@ -62,7 +62,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("end-of-file"));
             return;
         }
         fail();
@@ -75,7 +75,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("OPERATOR"));
             return;
         }
         fail();
@@ -127,7 +127,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("LPAREN"));
             return;
         }
         fail();
@@ -140,7 +140,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("end-of-file"));
             return;
         }
         fail();
@@ -163,7 +163,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("NAME"));
             return;
         }
         fail();
@@ -186,7 +186,7 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("end-of-file"));
             return;
         }
         fail();
@@ -199,7 +199,8 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("Expected"));
+            assertTrue(e.getMessage().contains("="));
             return;
         }
         fail();
@@ -212,7 +213,8 @@ public class ParserTest {
         try {
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            assertTrue(e.getMessage().contains("Expected"));
+            assertTrue(e.getMessage().contains("="));
             return;
         }
         fail();
@@ -226,7 +228,9 @@ public class ParserTest {
                 "val = 20\n" +
                 "}";
         var parser = new Parser(source);
-        parser.parse();
+        if (parser.parse() instanceof IfStatement ifStmt) {
+            assertEquals(0, ifStmt.statements().size());
+        } else fail();
     }
 
     @Test
@@ -299,7 +303,8 @@ public class ParserTest {
             var parser = new Parser(source);
             parser.parse();
         } catch (RuntimeException e) {
-            // FIXME: somehow supply the error message and test if we get the right error.
+            // FIXME: This doesn't make sense.
+            assertTrue(e.getMessage().contains("Premature end-of-file"));
             return;
         }
         fail();

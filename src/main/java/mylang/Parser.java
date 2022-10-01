@@ -2,11 +2,11 @@ package mylang;
 
 import mylang.ast.*;
 import mylang.ast.Number;
+import mylang.tokeniser.Token;
 import mylang.tokeniser.Tokenizer;
 import mylang.tokeniser.Type;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import static mylang.Utils.die;
 
@@ -23,135 +23,171 @@ public class Parser {
         errorManager = tokenizer.errorManager();
     }
 
-    private Optional<Object> maybeParseNameOrNumber() {
-        var maybeNextToken = tokenizer.eatAndMatch(Type.NAME, Type.NUMBER);
-        return maybeNextToken.isEmpty() ? Optional.empty() : Optional.of(maybeNextToken.get());
+    private Signal<Object> tryParseNameOrNumber() {
+        var result = tokenizer.eatAndMatch(Type.NAME, Type.NUMBER);
+        if (result.failure())
+            return Signal.fail(result.message());
+        return Signal.of(result.get());
     }
 
-    private Optional<Operator> maybeParseOperator() {
-        var maybeOperator = tokenizer.eatAndMatch(Type.OPERATOR);
-        return maybeOperator.isEmpty() ? Optional.empty() : Optional.of(new Operator(maybeOperator.get().value()));
+    private Signal<Operator> tryParseOperator() {
+        var result = tokenizer.eatAndMatch(Type.OPERATOR);
+        if (result.failure())
+            return Signal.fail(result.message());
+        var operator = new Operator(result.get().value());
+        return Signal.of(operator);
     }
 
-    private Optional<ConditionExpression> maybeParseConditionExpression() {
-        var maybeLhs = maybeParseNameOrNumber();
-        if (maybeLhs.isEmpty())
-            return Optional.empty();
+    private Signal<ConditionExpression> tryParseConditionExpression() {
+        var lhsResult = tryParseNameOrNumber();
+        if (lhsResult.failure())
+            return Signal.fail(lhsResult.message());
 
-        var maybeOp = maybeParseOperator();
-        if (maybeOp.isEmpty())
-            return Optional.empty();
+        var opResult = tryParseOperator();
+        if (opResult.failure())
+            return Signal.fail(opResult.message());
 
-        var operator = maybeOp.get();
-        if (operator.string().equals("=")) {
-            // '=' is the only operator not allowed in conditional expression.
-            errorManager.emitSyntaxError("Unexpected token `=`");
-            return Optional.empty();
-        }
+        var operator = opResult.get();
+        var opStr = operator.string();
+        if (opStr.equals("=") || opStr.equals(","))
+            // '=' and ',' are the the only two operators not allowed in conditional expression.
+            return Signal.fail(String.format("Unexpected operator `%s`", opStr));
 
-        var maybeRhs = maybeParseNameOrNumber();
-        if (maybeRhs.isEmpty())
-            return Optional.empty();
+        var rhsResult = tryParseNameOrNumber();
+        if (rhsResult.failure())
+            return Signal.fail(rhsResult.message());
 
-        return Optional.of(new ConditionExpression(maybeLhs.get(), maybeRhs.get(), maybeOp.get()));
+        var conditionExpr = new ConditionExpression(lhsResult.get(), rhsResult.get(), operator);
+        return Signal.of(conditionExpr);
     }
 
-    private Optional<Statement> maybeParseIfStatement() {
+    private Signal<Statement> tryParseIfStatement() {
         tokenizer.eatToken(); // "if"
 
-        var maybeCondExpr = maybeParseConditionExpression();
-        if (maybeCondExpr.isEmpty())
-            return Optional.empty();
+        var condResult = tryParseConditionExpression();
+        if (condResult.failure())
+            return Signal.fail(condResult.message());
 
-        if (tokenizer.eatAndMatch(Type.LBRACE).isEmpty())
-            return Optional.empty();
+        var lbraceResult = tokenizer.eatAndMatch(Type.LBRACE);
+        if (lbraceResult.failure())
+            return Signal.fail(lbraceResult.message());
+
+        Signal<Token> nextTokenResult = tokenizer.peekToken();
+        if (nextTokenResult.failure())
+            return Signal.fail(nextTokenResult.message());
 
         List<Statement> statementList = new ArrayList<>();
-        outer:
-        while (tokenizer.peekToken().type() != Type.RBRACE) {
-            var maybeNextStmt = maybeParseNextStatement();
-            while (maybeNextStmt.isEmpty()) {
-                tokenizer.advanceLine();
-                continue outer;
+        while (nextTokenResult.get().type() != Type.RBRACE) {
+            var nextStmtResult = tryParseNextStatement();
+            if (nextStmtResult.failure()) {
+                errorManager.emitSyntaxError(nextStmtResult.message());
+                var advLineResult = tokenizer.advanceLine();
+                if (advLineResult.failure())
+                    errorManager.emitFatalError(advLineResult.message());
+            } else {
+                statementList.add(nextStmtResult.get());
             }
-            statementList.add(maybeNextStmt.get());
+
+            nextTokenResult = tokenizer.peekToken();
+            if (nextTokenResult.failure()) {
+                errorManager.emitFatalError(nextTokenResult.message());
+                return null;
+            }
         }
 
         tokenizer.eatToken(); // "}"
-        return Optional.of(new IfStatement(maybeCondExpr.get(), statementList));
+        return Signal.of(new IfStatement(condResult.get(), statementList));
     }
 
-    private Optional<Statement> maybeParseDeclarationStatement() {
+    private Signal<Statement> tryParseDeclarationStatement() {
         tokenizer.eatToken(); // "val"
 
-        var maybeName = tokenizer.eatAndMatch(Type.NAME);
-        if (maybeName.isEmpty())
-            return Optional.empty();
+        var nameResult = tokenizer.eatAndMatch(Type.NAME);
+        if (nameResult.failure())
+            return Signal.fail(nameResult.message());
 
-        var maybeAssignOp = tokenizer.eatAndMatch("=");
-        if (maybeAssignOp.isEmpty())
-            return Optional.empty();
+        var opResult = tokenizer.eatAndMatch("=");
+        if (opResult.failure())
+            return Signal.fail(opResult.message());
 
-        var maybeNumber = tokenizer.eatAndMatch(Type.NUMBER);
-        if (maybeNumber.isEmpty())
-            return Optional.empty();
+        var numberResult = tokenizer.eatAndMatch(Type.NUMBER);
+        if (numberResult.failure())
+            return Signal.fail(numberResult.message());
 
-        var name = new Name(maybeName.get().value());
-        var number = new Number(Integer.valueOf(maybeNumber.get().value()));
-        return Optional.of(new DeclarationStatement(name, number));
+        var name = new Name(nameResult.get().value());
+        var number = new Number(Integer.valueOf(numberResult.get().value()));
+        return Signal.of(new DeclarationStatement(name, number));
     }
 
-    private Optional<List<Object>> maybeParseArgumentList() {
+    private Signal<List<Object>> tryParseArgumentList() {
         var list = new ArrayList<>();
-        if (tokenizer.eatAndMatch(Type.LPAREN).isEmpty())
-            return Optional.empty();
 
-        while (tokenizer.peekToken().type() != Type.RPAREN) {
-            var maybeNameOrNumber = maybeParseNameOrNumber();
-            if (maybeNameOrNumber.isEmpty())
-                return Optional.empty();
+        var lparenResult = tokenizer.eatAndMatch(Type.LPAREN);
+        if (lparenResult.failure())
+            return Signal.fail(lparenResult.message());
 
-            var nextToken = tokenizer.peekToken();
+        var nextTokenResult = tokenizer.peekToken();
+        if (nextTokenResult.failure())
+            return Signal.fail(nextTokenResult.message());
+
+        while (nextTokenResult.get().type() != Type.RPAREN) {
+            var nameOrNumberResult = tryParseNameOrNumber();
+            if (nameOrNumberResult.failure())
+                return Signal.fail(nameOrNumberResult.message());
+
+            var maybeComma = tokenizer.peekToken();
+            if (maybeComma.failure())
+                return Signal.fail(maybeComma.message());
+
+            var nextToken = maybeComma.get();
             if (nextToken.value().equals(",")) {
                 tokenizer.eatToken();
-                list.add(maybeNameOrNumber.get());
-                maybeNameOrNumber = maybeParseNameOrNumber();
-                if (maybeNameOrNumber.isEmpty())
-                    return Optional.empty();
+                list.add(nameOrNumberResult.get());
+                nameOrNumberResult = tryParseNameOrNumber();
+                if (nameOrNumberResult.failure())
+                    return Signal.fail(nameOrNumberResult.message());
             }
-            list.add(maybeNameOrNumber.get());
+
+            list.add(nameOrNumberResult.get());
+            nextTokenResult = tokenizer.peekToken();
+            if (nextTokenResult.failure())
+                return Signal.fail(nextTokenResult.message());
         }
 
         tokenizer.eatToken(); // ")"
-        return Optional.of(list);
+        return Signal.of(list);
     }
 
-    private Optional<Statement> maybeParseFunctionCallStatement() {
-        var maybeName = tokenizer.eatAndMatch(Type.NAME);
-        if (maybeName.isEmpty())
-            return Optional.empty();
+    private Signal<Statement> tryParseFunctionCallStatement() {
+        var nameResult = tokenizer.eatAndMatch(Type.NAME);
+        if (nameResult.failure())
+            return Signal.fail(nameResult.message());
 
-        var maybeArgList = maybeParseArgumentList();
-        if (maybeArgList.isEmpty())
-            return Optional.empty();
+        var argListResult = tryParseArgumentList();
+        if (argListResult.failure())
+            return Signal.fail(argListResult.message());
 
-        var name = new Name(maybeName.get().value());
-        var arguments = maybeArgList.get();
-        return Optional.of(new FunctionCallStatement(name, arguments));
+        var name = new Name(nameResult.get().value());
+        var arguments = argListResult.get();
+        return Signal.of(new FunctionCallStatement(name, arguments));
     }
 
-    private Optional<Statement> maybeParseNextStatement() {
-        var nextToken = tokenizer.peekToken();
+    private Signal<Statement> tryParseNextStatement() {
+        var nextTokenResult = tokenizer.peekToken();
+        if (nextTokenResult.failure())
+            return Signal.fail(nextTokenResult.message());
+
+        var nextToken = nextTokenResult.get();
         if (nextToken.type() == Type.NAME)
-            return maybeParseFunctionCallStatement();
+            return tryParseFunctionCallStatement();
 
         var tokenVal = nextToken.value();
         return switch (tokenVal) {
-            case "if" -> maybeParseIfStatement();
-            case "val" -> maybeParseDeclarationStatement();
+            case "if" -> tryParseIfStatement();
+            case "val" -> tryParseDeclarationStatement();
             default -> {
                 errorManager.emitSyntaxError("Unexpected token `%s`", tokenVal);
-                yield Optional.empty();
+                yield Signal.fail("");
             }
         };
     }
@@ -161,10 +197,13 @@ public class Parser {
             errorManager.emitFatalError("Expected a variable declaration, if, or function call statement");
 
         // As per the grammar, only one top-level statement is allowed per program.
-        var maybeNextStmt = maybeParseNextStatement();
-        if (maybeNextStmt.isEmpty())
-            die("");
+        var stmtResult = tryParseNextStatement();
+        if (stmtResult.failure()) {
+            var message = stmtResult.message();
+            errorManager.emitSyntaxError(message);
+            die(message);
+        }
 
-        return maybeNextStmt.get();
+        return stmtResult.get();
     }
 }

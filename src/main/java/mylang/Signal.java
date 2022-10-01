@@ -2,19 +2,21 @@ package mylang;
 
 public class Signal<T> {
     private final T value;
+    private final boolean success;
     private final String message;
 
-    private Signal(T value, String message) {
+    private Signal(T value, boolean success, String message) {
         this.value = value;
+        this.success = success;
         this.message = message;
     }
 
     public boolean success() {
-        return value != null;
+        return success;
     }
 
     public boolean failure() {
-        return !success();
+        return !success;
     }
 
     public String message() {
@@ -23,20 +25,18 @@ public class Signal<T> {
 
 
     public T get() {
-        if (failure())
+        if (failure() || value == null)
             throw new RuntimeException("Invalid access!");
         return value;
     }
 
-    public static <T> Signal<T> successInstance(T object) {
-        if (object == null)
-            throw new RuntimeException("Success signal requires non-null object!");
-        return new Signal<>(object, "");
+    public static <T> Signal<T> of(T object) {
+        return new Signal<>(object, true, "");
     }
 
-    public static <T> Signal<T> failureInstance(String message) {
+    public static <T> Signal<T> fail(String message) {
         if (message == null)
             throw new RuntimeException("Failure signal requires a valid message!");
-        return new Signal<>(null, message);
+        return new Signal<>(null, false, message);
     }
 }

@@ -1,6 +1,7 @@
 package mylang;
 
 import mylang.tokeniser.Tokenizer;
+import mylang.tokeniser.Type;
 
 import static mylang.Utils.die;
 
@@ -29,22 +30,9 @@ public class ErrorManager {
         die(error);
     }
 
-    private String buildErrorMessage(String originalError, Object[] args) {
-        args = args == null ? new Object[0] : args;
-        String errWithLineInfo = originalError + " @(Line=%d, Column=%d)";
-        var newSize = args.length + 2;
-        var newArgs = new Object[newSize];
-        int i = 0;
-        for (; i < args.length; i++)
-            newArgs[i] = args[i];
-        newArgs[i++] = tokenizerState.line();
-        newArgs[i] = tokenizerState.lastTokenBegin();
-        return String.format(errWithLineInfo, newArgs);
-    }
-
     public void emitSyntaxError(String errorFmt, Object... args) {
         if (shouldReportError) {
-            String error = buildErrorMessage(errorFmt, args);
+            String error = buildErrorMessageWithAtInfo(tokenizerState, errorFmt, args);
             System.err.println(error);
             // A single error may be reported twice because, say, when we fail parsing the outermost if statement, we
             // emit a syntax error immediately. Then if this `if` statement happens to be the last statement then
@@ -53,5 +41,34 @@ public class ErrorManager {
             // happen if we'd decouple error reporting and parsing/tokenization.
             disableErrorReporting();
         }
+    }
+
+    public static String buildExpectedTokenTypeMessage(Type... candidates) {
+        var builder = new StringBuilder("Expected token of type ");
+        int i = 0;
+        for (; i < (candidates.length - 1); i++) {
+            builder.append("`");
+            builder.append(candidates[i].toString());
+            builder.append("` or ");
+        }
+
+        builder.append("`");
+        builder.append(candidates[i].toString());
+        builder.append("`");
+        return builder.toString();
+    }
+
+
+    public static String buildErrorMessageWithAtInfo(Tokenizer.State state, String originalError, Object[] args) {
+        args = args == null ? new Object[0] : args;
+        String errWithLineInfo = originalError + " @(Line=%d, Column=%d)";
+        var newSize = args.length + 2;
+        var newArgs = new Object[newSize];
+        int i = 0;
+        for (; i < args.length; i++)
+            newArgs[i] = args[i];
+        newArgs[i++] = state.lineNumber();
+        newArgs[i] = state.lastTokenBegin();
+        return String.format(errWithLineInfo, newArgs);
     }
 }

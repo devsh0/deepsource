@@ -4,7 +4,6 @@ import mylang.ErrorManager;
 import mylang.Signal;
 
 import java.util.List;
-import java.util.Optional;
 
 import static mylang.Utils.*;
 
@@ -27,7 +26,7 @@ public class Tokenizer {
         }
 
         // 1-indexed.
-        public int line() {
+        public int lineNumber() {
             return lineCursor + 1;
         }
 
@@ -63,37 +62,37 @@ public class Tokenizer {
         return sourceLines.get(state.lineCursor).isEmpty();
     }
 
-    public void advanceLine() {
+    public Signal<Void> advanceLine() {
         if (atEndOfFile())
-            errorManager.emitFatalError("Premature end-of-file!");
+            return Signal.fail("Premature end-of-file!");
 
         state.lineCursor++;
         state.columnCursor = 0;
-
         if (isLineEmpty())
-            advanceLine();
+            return advanceLineIfNecessary();
+        return Signal.of(null);
+    }
+
+    // Advances the line cursor only if we are at the end of the current line.
+    public Signal<Void> advanceLineIfNecessary() {
+        if (!atEndOfLine())
+            return Signal.of(null);
+        return advanceLine();
     }
 
     private String currentLine() {
         return sourceLines.get(state.lineCursor);
     }
 
-    private char eatChar() {
-        if (atEndOfFile())
-            errorManager.emitFatalError("Premature end-of-file!");
-
-        if (atEndOfLine()) {
-            advanceLine();
-            if (atEndOfFile())
-                errorManager.emitFatalError("Premature end-of-file");
-        }
-
-        var oldCursor = state.columnCursor;
-        state.columnCursor++;
-        return currentLine().charAt(oldCursor);
+    private Signal<Character> eatChar() {
+        var result = advanceLineIfNecessary();
+        if (result.failure())
+            return Signal.fail(result.message());
+        Character nextChar = currentLine().charAt(state.columnCursor++);
+        return Signal.of(nextChar);
     }
 
-    private char peekChar() {
+    private Signal<Character> peekChar() {
         int oldLineCursor = state.lineCursor;
         int oldColumnCursor = state.columnCursor;
         var nextChar = eatChar();
@@ -102,97 +101,134 @@ public class Tokenizer {
         return nextChar;
     }
 
-    private void eatWhitespaces() {
-        while (isWhitespace(peekChar()))
+    private Signal<Void> eatWhitespaces() {
+        var result = peekChar();
+        if (result.failure())
+            return Signal.fail(result.message());
+        char nextChar = result.get();
+        if (isWhitespace(nextChar)) {
             eatChar();
+            return eatWhitespaces();
+        }
+        return Signal.of(null);
     }
 
     public ErrorManager errorManager() {
         return errorManager;
     }
 
-    public Optional<Token> eatAndMatch(Type... candidates) {
-        var nextToken = eatToken();
+    public Signal<Token> eatAndMatch(Type... candidates) {
+        var result = eatToken();
+        if (result.failure())
+            return Signal.fail(result.message());
+
+        var nextToken = result.get();
         for (var type : candidates) {
             if (type == nextToken.type())
-                return Optional.of(nextToken);
+                return Signal.of(nextToken);
         }
 
-        var builder = new StringBuilder("Expected token of type ");
-        int i = 0;
-        for (; i < (candidates.length - 1); i++) {
-            builder.append("`");
-            builder.append(candidates[i].toString());
-            builder.append("` or ");
-        }
-
-        builder.append("`");
-        builder.append(candidates[i].toString());
-        builder.append("`");
-
-        errorManager.emitSyntaxError(builder.toString());
-        return Optional.empty();
+        return Signal.fail(ErrorManager.buildExpectedTokenTypeMessage(candidates));
     }
 
-    public Optional<Token> eatAndMatch(String str) {
-        var nextToken = eatToken();
-        if (!nextToken.value().equals(str)) {
-            errorManager.emitSyntaxError("Expected `%s`", str);
-            return Optional.empty();
-        }
-        return Optional.of(nextToken);
-    }
+    public Signal<Token> eatAndMatch(String str) {
+        var result = eatToken();
+        if (result.failure())
+            return Signal.fail(result.message());
 
+        var nextToken = result.get();
+        if (!str.equals(nextToken.value()))
+            return Signal.fail(String.format("Expected `%s`", str));
+        return Signal.of(nextToken);
+    }
 
     private void registerLastTokenBeginIndex() {
         state.lastTokenBeginIndex = state.columnCursor;
     }
 
-    public Token eatToken() {
+    private Signal<Token> eatNumberToken() {
+        char nextChar = peekChar().get();
+        var accumulator = new StringBuilder();
+        while (isDigit(nextChar)) {
+            eatChar();
+            accumulator.append(nextChar);
+
+            if (atEndOfFile())
+                return Signal.of(new Token(Type.NUMBER, accumulator.toString()));
+
+            var maybeNextChar = peekChar();
+            if (maybeNextChar.failure())
+                return Signal.fail(maybeNextChar.message());
+            nextChar = maybeNextChar.get();
+        }
+        return Signal.of(new Token(Type.NUMBER, accumulator.toString()));
+    }
+
+    private Signal<Token> eatNameOrKeywordToken() {
+        char nextChar = peekChar().get();
+        var accumulator = new StringBuilder();
+        while (isAlpha(nextChar)) {
+            eatChar();
+            accumulator.append(nextChar);
+            var maybeNextChar = peekChar();
+            if (maybeNextChar.failure())
+                return Signal.fail(maybeNextChar.message());
+            nextChar = maybeNextChar.get();
+        }
+
+        var value = accumulator.toString();
+        var type = KEYWORDS.contains(value) ? Type.KEYWORD : Type.NAME;
+        return Signal.of(new Token(type, value));
+
+    }
+
+    private Signal<Token> eatOperatorToken() {
+        char nextChar = eatChar().get();
+        var accumulator = new StringBuilder();
+        accumulator.append(nextChar);
+        switch (nextChar) {
+            case '(': return Signal.of(new Token(Type.LPAREN, "("));
+            case ')': return Signal.of(new Token(Type.RPAREN, ")"));
+            case '{': return Signal.of(new Token(Type.LBRACE, "{"));
+            case '}': return Signal.of(new Token(Type.RBRACE, "}"));
+            case ',': return Signal.of(new Token(Type.OPERATOR, ","));
+            case '>':
+            case '<':
+            case '=':
+            case '!': {
+                var result = peekChar();
+                if (result.failure())
+                    return Signal.fail(result.message());
+                nextChar = result.get();
+                if (nextChar == '=')
+                    accumulator.append(eatChar().get());
+                return Signal.of(new Token(Type.OPERATOR, accumulator.toString()));
+            }
+            default:
+                return Signal.fail(String.format("Unexpected symbol `%s`", accumulator));
+        }
+
+    }
+
+    public Signal<Token> eatToken() {
         // As soon as we have to eat the next token, re-enable error reporting.
         errorManager.enableErrorReporting();
-        StringBuilder accumulator = new StringBuilder();
         eatWhitespaces();
         registerLastTokenBeginIndex();
 
-        var nextChar = eatChar();
-        accumulator.append(nextChar);
+        var maybeNextChar = peekChar();
+        if (maybeNextChar.failure())
+            return Signal.fail(maybeNextChar.message());
 
-        if (isDigit(nextChar)) {
-            while (!atEndOfFile() && isDigit(peekChar()))
-                accumulator.append(eatChar());
-            return new Token(Type.NUMBER, accumulator.toString());
-        }
-
-        if (isAlpha(nextChar)) {
-            while (isAlpha(peekChar()))
-                accumulator.append(eatChar());
-
-            var string = accumulator.toString();
-            var tokenType = KEYWORDS.contains(string) ? Type.KEYWORD : Type.NAME;
-            return new Token(tokenType, string);
-        }
-
-        switch (accumulator.toString()) {
-            case "(": return new Token(Type.LPAREN, "(");
-            case ")": return new Token(Type.RPAREN, ")");
-            case "{": return new Token(Type.LBRACE, "{");
-            case "}": return new Token(Type.RBRACE, "}");
-            case ">":
-            case "<":
-            case "=":
-            case ",":
-            case "!": {
-                if (peekChar() == '=')
-                    accumulator.append(eatChar());
-                return new Token(Type.OPERATOR, accumulator.toString());
-            }
-            default:
-                return new Token(Type.ERROR, accumulator.toString());
-        }
+        char nextChar = maybeNextChar.get();
+        if (isDigit(nextChar))
+            return eatNumberToken();
+        if (isAlpha(nextChar))
+            return eatNameOrKeywordToken();
+        return eatOperatorToken();
     }
 
-    public Token peekToken() {
+    public Signal<Token> peekToken() {
         int oldLineCursor = state.lineCursor;
         int oldColumnCursor = state.columnCursor;
         var nextToken = eatToken();
@@ -205,11 +241,10 @@ public class Tokenizer {
         Signal<Tokenizer> signal;
         try {
             var tokenizer = new Tokenizer(source);
-            signal = Signal.successInstance(tokenizer);
+            signal = Signal.of(tokenizer);
         } catch (RuntimeException e) {
-            signal = Signal.failureInstance(e.getMessage());
+            signal = Signal.fail(e.getMessage());
         }
         return signal;
     }
-
 }
