@@ -15,4 +15,8 @@ public class IfStatement implements Statement {
     public ConditionExpression getConditionExpression() {
         return conditionExpression;
     }
+
+    public List<Statement> statements() {
+        return statements;
+    }
 }
