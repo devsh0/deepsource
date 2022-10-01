@@ -83,9 +83,13 @@ public class Tokeniser {
     }
 
     public void advanceLine() {
+        if (atEndOfFile())
+            emitFatalError("Premature end-of-file!");
+
         lineCursor++;
         columnCursor = 0;
-        if (!atEndOfFile() && isLineEmpty())
+
+        if (isLineEmpty())
             advanceLine();
     }
 
