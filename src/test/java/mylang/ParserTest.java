@@ -255,8 +255,7 @@ public class ParserTest {
         try {
             var parser = new Parser(source);
             parser.parse();
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             assertTrue(e.getMessage().startsWith("Invalid input"));
             return;
         }
@@ -264,13 +263,45 @@ public class ParserTest {
     }
 
     @Test
-    public void testEmptyLines() {
-        String source = "if value == 10 {\n\n" +
-                "val name == 10\n" +
-                "call\n" +
-                "(" +
-                "\n}\n";
+    public void testStatementsSpanningMultipleLines() {
+        String source = "if value == 10 {\n" +
+                "val variable =\n" +
+                "20\n" +
+                "callthis(\n" +
+                "1, 2\n" +
+                ")\n" +
+                "}";
+
         var parser = new Parser(source);
-        parser.parse();
+        if (parser.parse() instanceof IfStatement ifStmt) {
+            var stmts = ifStmt.statements();
+            if (stmts.get(0) instanceof DeclarationStatement declStmt) {
+                assertEquals("variable", declStmt.name().name());
+                assertEquals(20, declStmt.number().number().intValue());
+            } else fail();
+
+            if (stmts.get(1) instanceof FunctionCallStatement fnCall) {
+                assertEquals("callthis", fnCall.name().name());
+                assertTrue(fnCall.arguments().get(0).toString().contains("1"));
+                assertTrue(fnCall.arguments().get(1).toString().contains("2"));
+            } else fail();
+        } else fail();
+    }
+
+    @Test
+    public void testErrorEmittedForStatementsSpanningMultipleLines() {
+        try {
+            String source = "if value == 10 {\n\n" +
+                    "val name == 10\n" +
+                    "call\n" +
+                    "(" +
+                    "\n}\n";
+            var parser = new Parser(source);
+            parser.parse();
+        } catch (RuntimeException e) {
+            // FIXME: somehow supply the error message and test if we get the right error.
+            return;
+        }
+        fail();
     }
 }
