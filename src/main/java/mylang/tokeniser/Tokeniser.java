@@ -84,9 +84,9 @@ public class Tokeniser {
 
     public void advanceLine() {
         lineCursor++;
+        columnCursor = 0;
         if (!atEndOfFile() && isLineEmpty())
             advanceLine();
-        columnCursor = 0;
     }
 
     private String currentLine() {
@@ -97,8 +97,11 @@ public class Tokeniser {
         if (atEndOfFile())
             emitFatalError("Premature end-of-file!");
 
-        if (atEndOfLine())
+        if (atEndOfLine()) {
             advanceLine();
+            if (atEndOfFile())
+                emitFatalError("Premature end-of-file");
+        }
 
         var oldCursor = columnCursor;
         columnCursor += 1;
