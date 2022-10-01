@@ -1,5 +1,6 @@
 package mylang.tokeniser;
 
+import mylang.ErrorManager;
 import mylang.Signal;
 
 import java.util.List;
@@ -7,116 +8,97 @@ import java.util.Optional;
 
 import static mylang.Utils.*;
 
-// FIXME: We should really decouple error reporting and tokenization.
 public class Tokenizer {
     private static final List<String> KEYWORDS = List.of("if", "val");
 
     private final List<String> sourceLines;
-    private int lineCursor;
-    private int columnCursor;
-    private int lastTokenBeginIndex;
-    private boolean shouldReportError = true;
+    private final State state;
+    private final ErrorManager errorManager;
+
+    public static class State {
+        private int lineCursor;
+        private int columnCursor;
+        private int lastTokenBeginIndex;
+
+        State(int lineCursor, int columnCursor, int lastTokenBeginIndex) {
+            this.lineCursor = lineCursor;
+            this.columnCursor = columnCursor;
+            this.lastTokenBeginIndex = lastTokenBeginIndex;
+        }
+
+        // 1-indexed.
+        public int line() {
+            return lineCursor + 1;
+        }
+
+        // 1-indexed.
+        public int column() {
+            return columnCursor + 1;
+        }
+
+        // 1-indexed.
+        public int lastTokenBegin() {
+            return lastTokenBeginIndex + 1;
+        }
+    }
 
     private Tokenizer(String source) {
         if (source == null)
             throw new RuntimeException("Invalid input!");
         sourceLines = List.of(source.split("\n"));
-        lineCursor = 0;
-        columnCursor = lastTokenBeginIndex = 0;
+        state = new State(0, 0, 0);
+        errorManager = new ErrorManager(state);
     }
 
     public boolean atEndOfFile() {
-        boolean atLastLine = lineCursor == sourceLines.size() - 1;
+        boolean atLastLine = state.lineCursor == sourceLines.size() - 1;
         return atLastLine && atEndOfLine();
     }
 
-    private void enableErrorReporting() {
-        shouldReportError = true;
-    }
-
-    private void disableErrorReporting() {
-        shouldReportError = false;
-    }
-
     private boolean atEndOfLine() {
-        return currentLine().length() == columnCursor;
-    }
-
-    private String buildErrorMessage(String originalError, Object[] args) {
-        args = args == null ? new Object[0] : args;
-        String errWithLineInfo = originalError + " @(Line=%d, Column=%d)";
-        var newSize = args.length + 2;
-        var newArgs = new Object[newSize];
-        int i = 0;
-        for (; i < args.length; i++)
-            newArgs[i] = args[i];
-        newArgs[i++] = line() + 1;
-        newArgs[i] = lastTokenStart() + 1;
-        return String.format(errWithLineInfo, newArgs);
-    }
-
-    public void emitFatalError(String errorFmt, Object... args) {
-        var error = String.format(errorFmt, args);
-        if (shouldReportError) {
-            System.err.println(error);
-            disableErrorReporting();
-        }
-        die(error);
-    }
-
-    public void emitSyntaxError(String errorFmt, Object... args) {
-        if (shouldReportError) {
-            String error = buildErrorMessage(errorFmt, args);
-            System.err.println(error);
-            // A single error may be reported twice because, say, when we fail parsing the outermost if statement, we
-            // emit a syntax error immediately. Then if this `if` statement happens to be the last statement then
-            // the parser will again try to emit a fatal error because parsing the only statement has failed.
-            // By maintaining a flag we make sure that we don't report two errors for a single issue. None of this would
-            // happen if we'd decouple error reporting and parsing/tokenization.
-            disableErrorReporting();
-        }
+        return currentLine().length() == state.columnCursor;
     }
 
     private boolean isLineEmpty() {
-        return sourceLines.get(lineCursor).isEmpty();
+        return sourceLines.get(state.lineCursor).isEmpty();
     }
 
     public void advanceLine() {
         if (atEndOfFile())
-            emitFatalError("Premature end-of-file!");
+            errorManager.emitFatalError("Premature end-of-file!");
 
-        lineCursor++;
-        columnCursor = 0;
+        state.lineCursor++;
+        state.columnCursor = 0;
 
         if (isLineEmpty())
             advanceLine();
     }
 
     private String currentLine() {
-        return sourceLines.get(lineCursor);
+        return sourceLines.get(state.lineCursor);
     }
 
     private char eatChar() {
         if (atEndOfFile())
-            emitFatalError("Premature end-of-file!");
+            errorManager.emitFatalError("Premature end-of-file!");
 
         if (atEndOfLine()) {
             advanceLine();
             if (atEndOfFile())
-                emitFatalError("Premature end-of-file");
+                errorManager.emitFatalError("Premature end-of-file");
         }
 
-        var oldCursor = columnCursor;
-        columnCursor += 1;
+        var oldCursor = state.columnCursor;
+        state.columnCursor++;
         return currentLine().charAt(oldCursor);
     }
 
     private char peekChar() {
-        int oldLineCursor = lineCursor;
-        int oldColumnCursor = columnCursor;
+        int oldLineCursor = state.lineCursor;
+        int oldColumnCursor = state.columnCursor;
         var nextChar = eatChar();
-        lineCursor = oldLineCursor;
-        columnCursor = oldColumnCursor;
+        state.lineCursor = oldLineCursor;
+        state.columnCursor = oldColumnCursor;
         return nextChar;
     }
 
@@ -125,16 +107,8 @@ public class Tokenizer {
             eatChar();
     }
 
-    private int line() {
-        return lineCursor;
-    }
-
-    private int column() {
-        return columnCursor;
-    }
-
-    private int lastTokenStart() {
-        return lastTokenBeginIndex;
+    public ErrorManager errorManager() {
+        return errorManager;
     }
 
     public Optional<Token> eatAndMatch(Type... candidates) {
@@ -156,14 +130,14 @@ public class Tokenizer {
         builder.append(candidates[i].toString());
         builder.append("`");
 
-        emitSyntaxError(builder.toString());
+        errorManager.emitSyntaxError(builder.toString());
         return Optional.empty();
     }
 
     public Optional<Token> eatAndMatch(String str) {
         var nextToken = eatToken();
         if (!nextToken.value().equals(str)) {
-            emitSyntaxError("Expected `%s`", str);
+            errorManager.emitSyntaxError("Expected `%s`", str);
             return Optional.empty();
         }
         return Optional.of(nextToken);
@@ -171,12 +145,12 @@ public class Tokenizer {
 
 
     private void registerLastTokenBeginIndex() {
-        lastTokenBeginIndex = columnCursor;
+        state.lastTokenBeginIndex = state.columnCursor;
     }
 
     public Token eatToken() {
         // As soon as we have to eat the next token, re-enable error reporting.
-        enableErrorReporting();
+        errorManager.enableErrorReporting();
         StringBuilder accumulator = new StringBuilder();
         eatWhitespaces();
         registerLastTokenBeginIndex();
@@ -219,11 +193,11 @@ public class Tokenizer {
     }
 
     public Token peekToken() {
-        int oldLineCursor = lineCursor;
-        int oldColumnCursor = columnCursor;
+        int oldLineCursor = state.lineCursor;
+        int oldColumnCursor = state.columnCursor;
         var nextToken = eatToken();
-        lineCursor = oldLineCursor;
-        columnCursor = oldColumnCursor;
+        state.lineCursor = oldLineCursor;
+        state.columnCursor = oldColumnCursor;
         return nextToken;
     }
 

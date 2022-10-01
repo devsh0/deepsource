@@ -12,6 +12,7 @@ import static mylang.Utils.die;
 
 public class Parser {
     private final Tokenizer tokenizer;
+    private final ErrorManager errorManager;
 
     public Parser(String source) {
         var maybeTokeniser = Tokenizer.getInstance(source);
@@ -19,6 +20,7 @@ public class Parser {
             // FIXME: Temporary...find a better way to handle errors.
             throw new RuntimeException(maybeTokeniser.message());
         tokenizer = maybeTokeniser.get();
+        errorManager = tokenizer.errorManager();
     }
 
     private Optional<Object> maybeParseNameOrNumber() {
@@ -43,7 +45,7 @@ public class Parser {
         var operator = maybeOp.get();
         if (operator.string().equals("=")) {
             // '=' is the only operator not allowed in conditional expression.
-            tokenizer.emitSyntaxError("Unexpected token `=`");
+            errorManager.emitSyntaxError("Unexpected token `=`");
             return Optional.empty();
         }
 
@@ -148,7 +150,7 @@ public class Parser {
             case "if" -> maybeParseIfStatement();
             case "val" -> maybeParseDeclarationStatement();
             default -> {
-                tokenizer.emitSyntaxError("Unexpected token `%s`", tokenVal);
+                errorManager.emitSyntaxError("Unexpected token `%s`", tokenVal);
                 yield Optional.empty();
             }
         };
@@ -156,7 +158,7 @@ public class Parser {
 
     public Statement parse() {
         if (tokenizer.atEndOfFile())
-            tokenizer.emitFatalError("Expected a variable declaration, if, or function call statement");
+            errorManager.emitFatalError("Expected a variable declaration, if, or function call statement");
 
         // As per the grammar, only one top-level statement is allowed per program.
         var maybeNextStmt = maybeParseNextStatement();
