@@ -3,11 +3,18 @@ package mylang;
 import mylang.ast.DeclarationStatement;
 import mylang.ast.FunctionCallStatement;
 import mylang.ast.IfStatement;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ParserTest {
+    private static final boolean debug = true;
+
+    public void dbgprint(String message) {
+        if (debug)
+            System.out.println(message);
+    }
 
     @Test
     public void testEmptySource() {
@@ -24,21 +31,24 @@ public class ParserTest {
     public void testIfStmtHasEmptyBody() {
         String source = "if name == 10 {}";
         var parser = new Parser(source);
-        var stmt = parser.parse();
-        assertTrue(stmt instanceof IfStatement);
+        var result = parser.parse();
+        assertFalse(result.failed());
+        assertTrue(result.astRoot() instanceof IfStatement);
     }
 
     @Test
     public void testIfStmtHasInvalidOp() {
         String source = "if name = 10 {}";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().startsWith("Unexpected operator"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Unexpected operator `=`"));
+        assertEquals(1, problem.line());
+        assertEquals(9, problem.column());
+        
+        dbgprint(problem.prettyError());
     }
 
 
@@ -46,13 +56,15 @@ public class ParserTest {
     public void testIfStmtMissingLbrace() {
         String source = "if name == 10 }";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("LBRACE"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Expected token of type `LBRACE`"));
+        assertEquals(1, problem.line());
+        assertEquals(15, problem.column());
+
+        dbgprint(problem.prettyError());
     }
 
     @Test
@@ -72,13 +84,15 @@ public class ParserTest {
     public void testIfStmtMissingOp() {
         String source = "if name 10 {}";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("OPERATOR"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Expected token of type `OPERATOR`"));
+        assertEquals(1, problem.line());
+        assertEquals(9, problem.column());
+
+        dbgprint(problem.prettyError());
     }
 
     @Test
@@ -89,135 +103,151 @@ public class ParserTest {
                 "if fame == 0 {}\n" +
                 "}";
         var parser = new Parser(source);
-        assertTrue(parser.parse() instanceof IfStatement);
+        var result = parser.parse();
+        assertFalse(result.failed());
+
+        var stmt = (IfStatement)result.astRoot();
+        assertEquals(3, stmt.statements().size());
     }
 
     @Test
     public void testIfStmtWithNumericLhsAndRhs() {
         String source = "if 10 == 10 {}";
         var parser = new Parser(source);
-        if (parser.parse() instanceof IfStatement ifStatement) {
-            assertTrue(ifStatement.getConditionExpression().lhs().toString().contains("10"));
-            assertTrue(ifStatement.getConditionExpression().rhs().toString().contains("10"));
-        } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
+        var ifStatement = (IfStatement)result.astRoot();
+        assertTrue(ifStatement.getConditionExpression().lhs().toString().contains("10"));
+        assertTrue(ifStatement.getConditionExpression().rhs().toString().contains("10"));
     }
 
     @Test
     public void testIfStmtWithVariableLhsAndRhs() {
         String source = "if value > othervalue {}";
         var parser = new Parser(source);
-        if (parser.parse() instanceof IfStatement ifStatement) {
-            assertTrue(ifStatement.getConditionExpression().lhs().toString().contains("value"));
-            assertTrue(ifStatement.getConditionExpression().rhs().toString().contains("othervalue"));
-        } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
+        var ifStatement = (IfStatement)result.astRoot();
+        assertTrue(ifStatement.getConditionExpression().lhs().toString().contains("value"));
+        assertTrue(ifStatement.getConditionExpression().rhs().toString().contains("othervalue"));
     }
 
     @Test
     public void testFunctionCallWithEmptyArgs() {
         String source = "function()";
         var parser = new Parser(source);
-        var stmt = parser.parse();
-        assertTrue(stmt instanceof FunctionCallStatement);
+        var result = parser.parse();
+        assertFalse(result.failed());
+
+        var call = (FunctionCallStatement)result.astRoot();
+        assertEquals("function", call.name().name());
     }
 
     @Test
     public void testFunctionCallMissingLparen() {
         String source = "fun10)";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("LPAREN"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertEquals(1, problem.line());
+        assertEquals(4, problem.column());
+
+        dbgprint(problem.prettyError());
     }
 
     @Test
     public void testFunctionCallMissingRparen() {
         String source = "fun(10";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("end-of-file"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Premature end-of-file"));
+        assertEquals(1, problem.line());
+        assertEquals(7, problem.column());
     }
 
     @Test
     public void testFunctionCallWithNonEmptyArgs() {
-        String source = "function(1, 2)";
+        String source = "function(30, 40)";
         var parser = new Parser(source);
-        var stmt = parser.parse();
-        if (stmt instanceof FunctionCallStatement fn)
-            assertEquals(2, fn.arguments().size());
-        else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
+
+        var fn = (FunctionCallStatement)result.astRoot();
+        assertEquals("function", fn.name().name());
+        assertEquals(2, fn.arguments().size());
+        assertTrue(fn.arguments().get(0).toString().contains("30"));
+        assertTrue(fn.arguments().get(1).toString().contains("40"));
     }
 
     @Test
     public void testVariableDeclarationHasInvalidName() {
         String source = "val 0wesome = 10";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("NAME"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Expected token of type `NAME`"));
+        assertEquals(1, problem.line());
+        assertEquals(5, problem.column());
     }
 
     @Test
     public void testVariableDeclaration() {
         String source = "val name = 10";
         var parser = new Parser(source);
-        if (parser.parse() instanceof DeclarationStatement stmt) {
-            assertEquals("name", stmt.name().name());
-            assertTrue(stmt.number().toString().contains("10"));
-        } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
+
+        var stmt = (DeclarationStatement)result.astRoot();
+        assertEquals("name", stmt.name().name());
+        assertTrue(stmt.number().toString().contains("10"));
     }
 
     @Test
     public void testVariableDeclarationHasInvalidValue() {
         String source = "val name = if";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("end-of-file"));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Premature end-of-file"));
     }
 
     @Test
     public void testVariableDeclarationHasInvalidOp() {
         String source = "val value == 20";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("Expected"));
-            assertTrue(e.getMessage().contains("="));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Expected `=`"));
+        assertEquals(1, problem.line());
+        assertEquals(11, problem.column());
+
+        dbgprint(problem.prettyError());
     }
 
     @Test
     public void testVariableDeclarationMissingOp() {
         String source = "val value 20";
         var parser = new Parser(source);
-        try {
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().contains("Expected"));
-            assertTrue(e.getMessage().contains("="));
-            return;
-        }
-        fail();
+        var result = parser.parse();
+        assertTrue(result.failed());
+
+        var problem = result.problems().get(0);
+        assertTrue(problem.description().startsWith("Expected `=`"));
+        assertEquals(1, problem.line());
+        assertEquals(11, problem.column());
+
+        dbgprint(problem.prettyError());
     }
 
     @Test
@@ -228,9 +258,29 @@ public class ParserTest {
                 "val = 20\n" +
                 "}";
         var parser = new Parser(source);
-        if (parser.parse() instanceof IfStatement ifStmt) {
-            assertEquals(0, ifStmt.statements().size());
-        } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
+
+        var problems = result.problems();
+        assertEquals(3, problems.size());
+
+        var p1 = problems.get(0);
+        assertTrue(p1.description().startsWith("Expected token of type `NAME`"));
+        assertEquals(2, p1.line());
+        assertEquals(5, p1.column());
+        dbgprint(p1.prettyError());
+
+        var p2 = problems.get(1);
+        assertTrue(p2.description().startsWith("Unexpected operator `=`"));
+        assertEquals(3, p2.line());
+        assertEquals(9, p2.column());
+        dbgprint(p2.prettyError());
+
+        var p3 = problems.get(2);
+        assertTrue(p3.description().startsWith("Expected token of type `NAME`"));
+        assertEquals(4, p3.line());
+        assertEquals(5, p3.column());
+        dbgprint(p3.prettyError());
     }
 
     @Test
@@ -239,25 +289,25 @@ public class ParserTest {
                 "val name = 10 call()\n" +
                 "}";
         var parser = new Parser(source);
-        if (parser.parse() instanceof IfStatement stmt) {
-            var statements = stmt.statements();
-            assertEquals(2, statements.size());
-            if (statements.get(0) instanceof DeclarationStatement decl) {
-                assertEquals("name", decl.name().name());
-                assertTrue(decl.number().toString().contains("10"));
-            } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
 
-            if (statements.get(1) instanceof FunctionCallStatement call)
-                assertEquals("call", call.name().name());
-            else fail();
-        }
+        var ifStmt = (IfStatement)result.astRoot();
+        var statements = ifStmt.statements();
+        assertEquals(2, statements.size());
+
+        var decl = (DeclarationStatement)statements.get(0);
+        assertEquals("name", decl.name().name());
+        assertTrue(decl.number().toString().contains("10"));
+
+        var call = (FunctionCallStatement)statements.get(1);
+        assertEquals("call", call.name().name());
     }
 
     @Test
     public void testNullSource() {
-        String source = null;
         try {
-            var parser = new Parser(source);
+            var parser = new Parser(null);
             parser.parse();
         } catch (RuntimeException e) {
             assertTrue(e.getMessage().startsWith("Invalid input"));
@@ -272,27 +322,29 @@ public class ParserTest {
                 "val variable =\n" +
                 "20\n" +
                 "callthis(\n" +
-                "1, 2\n" +
+                "50, 60\n" +
                 ")\n" +
                 "}";
 
         var parser = new Parser(source);
-        if (parser.parse() instanceof IfStatement ifStmt) {
-            var stmts = ifStmt.statements();
-            if (stmts.get(0) instanceof DeclarationStatement declStmt) {
-                assertEquals("variable", declStmt.name().name());
-                assertEquals(20, declStmt.number().number().intValue());
-            } else fail();
+        var result = parser.parse();
+        assertFalse(result.failed());
 
-            if (stmts.get(1) instanceof FunctionCallStatement fnCall) {
-                assertEquals("callthis", fnCall.name().name());
-                assertTrue(fnCall.arguments().get(0).toString().contains("1"));
-                assertTrue(fnCall.arguments().get(1).toString().contains("2"));
-            } else fail();
-        } else fail();
+        var ifStmt = (IfStatement)result.astRoot();
+        var stmts = ifStmt.statements();
+
+        var declStmt = (DeclarationStatement)stmts.get(0);
+        assertEquals("variable", declStmt.name().name());
+        assertEquals(20, declStmt.number().number().intValue());
+
+        var fnCall = (FunctionCallStatement)stmts.get(1);
+        assertEquals("callthis", fnCall.name().name());
+        assertTrue(fnCall.arguments().get(0).toString().contains("50"));
+        assertTrue(fnCall.arguments().get(1).toString().contains("60"));
     }
 
     @Test
+    @Disabled
     public void testErrorEmittedForStatementsSpanningMultipleLines() {
         try {
             String source = "if value == 10 {\n\n" +

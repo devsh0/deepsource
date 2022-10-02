@@ -3,11 +3,15 @@ package mylang;
 import mylang.tokeniser.Tokenizer;
 import mylang.tokeniser.Type;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static mylang.Utils.die;
 
 public class ErrorManager {
     private boolean shouldReportError = true;
     private final Tokenizer.State tokenizerState;
+    private final List<Problem> problems = new ArrayList<>();
 
     public ErrorManager(Tokenizer.State tokenizerState) {
         this.tokenizerState = tokenizerState;
@@ -24,7 +28,8 @@ public class ErrorManager {
     public void emitFatalError(String errorFmt, Object... args) {
         var error = String.format(errorFmt, args);
         if (shouldReportError) {
-            System.err.println(error);
+            var problem = new Problem(tokenizerState, error);
+            problems.add(problem);
             disableErrorReporting();
         }
         die(error);
@@ -32,15 +37,14 @@ public class ErrorManager {
 
     public void emitSyntaxError(String errorFmt, Object... args) {
         if (shouldReportError) {
-            String error = buildErrorMessageWithAtInfo(tokenizerState, errorFmt, args);
-            System.err.println(error);
-            // A single error may be reported twice because, say, when we fail parsing the outermost if statement, we
-            // emit a syntax error immediately. Then if this `if` statement happens to be the last statement then
-            // the parser will again try to emit a fatal error because parsing the only statement has failed.
-            // By maintaining a flag we make sure that we don't report two errors for a single issue. None of this would
-            // happen if we'd decouple error reporting and parsing/tokenization.
+            var problem = new Problem(tokenizerState, String.format(errorFmt, args));
+            problems.add(problem);
             disableErrorReporting();
         }
+    }
+
+    public List<Problem> problems() {
+        return List.copyOf(problems);
     }
 
     public static String buildExpectedTokenTypeMessage(Type... candidates) {
@@ -56,19 +60,5 @@ public class ErrorManager {
         builder.append(candidates[i].toString());
         builder.append("`");
         return builder.toString();
-    }
-
-
-    public static String buildErrorMessageWithAtInfo(Tokenizer.State state, String originalError, Object[] args) {
-        args = args == null ? new Object[0] : args;
-        String errWithLineInfo = originalError + " @(Line=%d, Column=%d)";
-        var newSize = args.length + 2;
-        var newArgs = new Object[newSize];
-        int i = 0;
-        for (; i < args.length; i++)
-            newArgs[i] = args[i];
-        newArgs[i++] = state.lineNumber();
-        newArgs[i] = state.lastTokenBegin();
-        return String.format(errWithLineInfo, newArgs);
     }
 }

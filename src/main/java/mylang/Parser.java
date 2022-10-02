@@ -192,15 +192,15 @@ public class Parser {
         };
     }
 
-    public Statement parse() {
+    public CompilationResult parse() {
         // As per the grammar, only one top-level statement is allowed per program.
         var stmtResult = tryParseNextStatement();
         if (stmtResult.failure()) {
             var message = stmtResult.message();
             errorManager.emitSyntaxError(message);
-            die(message);
+            return new CompilationResult(null, errorManager.problems());
         }
 
-        return stmtResult.get();
+        return new CompilationResult(stmtResult.get(), errorManager.problems());
     }
 }

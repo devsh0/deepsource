@@ -46,7 +46,7 @@ public class Tokenizer {
             return atLastLine && atEndOfLine();
         }
 
-        private String currentLine() {
+        public String currentLine() {
             return sourceLines.get(lineCursor);
         }
 
