@@ -83,6 +83,8 @@ public class Parser {
                     // Cannot recover from this error.
                     return Signal.fail(nextStmtResult.message());
 
+                // Advance the line in the hope of seeing a new statement on the next line. Ideally, we would
+                // skip chars until we see one that marks the beginning of a new statement. But for now, this will do.
                 var advLineResult = tokenizer.advanceLine();
                 if (advLineResult.failure()) {
                     // Cannot recover from this error.

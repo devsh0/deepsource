@@ -73,7 +73,7 @@ public class Tokenizer {
         state.lineCursor++;
         state.columnCursor = 0;
         if (state.isLineEmpty())
-            return advanceLineIfNecessary();
+            return advanceLine();
         return Signal.of(null);
     }
 
