@@ -27,6 +27,18 @@ public class ParserTest {
     }
 
     @Test
+    public void testNullSource() {
+        try {
+            var parser = new Parser(null);
+            parser.parse();
+        } catch (RuntimeException e) {
+            assertTrue(e.getMessage().startsWith("Invalid input"));
+            return;
+        }
+        fail();
+    }
+
+    @Test
     public void testIfStmtHasEmptyBody() {
         String source = "if name == 10 {}";
         var parser = new Parser(source);
@@ -298,18 +310,6 @@ public class ParserTest {
 
         var call = (FunctionCallStatement) statements.get(1);
         assertEquals("call", call.name().name());
-    }
-
-    @Test
-    public void testNullSource() {
-        try {
-            var parser = new Parser(null);
-            parser.parse();
-        } catch (RuntimeException e) {
-            assertTrue(e.getMessage().startsWith("Invalid input"));
-            return;
-        }
-        fail();
     }
 
     @Test
