@@ -16,7 +16,6 @@ public class Problem {
         this.column = state.lastTokenBegin();
         this.line = state.currentLine();
         this.description = description;
-        this.decorated = description;
         decorate();
     }
 
