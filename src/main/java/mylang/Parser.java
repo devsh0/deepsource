@@ -193,9 +193,6 @@ public class Parser {
     }
 
     public Statement parse() {
-        if (tokenizer.atEndOfFile())
-            errorManager.emitFatalError("Expected a variable declaration, if, or function call statement");
-
         // As per the grammar, only one top-level statement is allowed per program.
         var stmtResult = tryParseNextStatement();
         if (stmtResult.failure()) {

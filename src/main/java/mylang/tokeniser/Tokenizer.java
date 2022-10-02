@@ -10,16 +10,17 @@ import static mylang.Utils.*;
 public class Tokenizer {
     private static final List<String> KEYWORDS = List.of("if", "val");
 
-    private final List<String> sourceLines;
     private final State state;
     private final ErrorManager errorManager;
 
     public static class State {
+        private final List<String> sourceLines;
         private int lineCursor;
         private int columnCursor;
         private int lastTokenBeginIndex;
 
-        State(int lineCursor, int columnCursor, int lastTokenBeginIndex) {
+        State(String source, int lineCursor, int columnCursor, int lastTokenBeginIndex) {
+            this.sourceLines = List.of(source.split("\n"));
             this.lineCursor = lineCursor;
             this.columnCursor = columnCursor;
             this.lastTokenBeginIndex = lastTokenBeginIndex;
@@ -39,56 +40,55 @@ public class Tokenizer {
         public int lastTokenBegin() {
             return lastTokenBeginIndex + 1;
         }
+
+        public boolean atEndOfFile() {
+            boolean atLastLine = lineCursor == sourceLines.size() - 1;
+            return atLastLine && atEndOfLine();
+        }
+
+        private String currentLine() {
+            return sourceLines.get(lineCursor);
+        }
+
+        private boolean atEndOfLine() {
+            return currentLine().length() == columnCursor;
+        }
+
+        private boolean isLineEmpty() {
+            return sourceLines.get(lineCursor).isEmpty();
+        }
     }
 
     private Tokenizer(String source) {
-        if (source == null)
+        if (source == null || source.isEmpty())
             throw new RuntimeException("Invalid input!");
-        sourceLines = List.of(source.split("\n"));
-        state = new State(0, 0, 0);
+        state = new State(source, 0, 0, 0);
         errorManager = new ErrorManager(state);
     }
 
-    public boolean atEndOfFile() {
-        boolean atLastLine = state.lineCursor == sourceLines.size() - 1;
-        return atLastLine && atEndOfLine();
-    }
-
-    private boolean atEndOfLine() {
-        return currentLine().length() == state.columnCursor;
-    }
-
-    private boolean isLineEmpty() {
-        return sourceLines.get(state.lineCursor).isEmpty();
-    }
-
     public Signal<Void> advanceLine() {
-        if (atEndOfFile())
+        if (state.atEndOfFile())
             return Signal.fail("Premature end-of-file!");
 
         state.lineCursor++;
         state.columnCursor = 0;
-        if (isLineEmpty())
+        if (state.isLineEmpty())
             return advanceLineIfNecessary();
         return Signal.of(null);
     }
 
     // Advances the line cursor only if we are at the end of the current line.
     public Signal<Void> advanceLineIfNecessary() {
-        if (!atEndOfLine())
+        if (!state.atEndOfLine())
             return Signal.of(null);
         return advanceLine();
-    }
-
-    private String currentLine() {
-        return sourceLines.get(state.lineCursor);
     }
 
     private Signal<Character> eatChar() {
         var result = advanceLineIfNecessary();
         if (result.failure())
             return Signal.fail(result.message());
-        Character nextChar = currentLine().charAt(state.columnCursor++);
+        Character nextChar = state.currentLine().charAt(state.columnCursor++);
         return Signal.of(nextChar);
     }
 
@@ -153,7 +153,7 @@ public class Tokenizer {
             eatChar();
             accumulator.append(nextChar);
 
-            if (atEndOfFile())
+            if (state.atEndOfFile())
                 return Signal.of(new Token(Type.NUMBER, accumulator.toString()));
 
             var maybeNextChar = peekChar();

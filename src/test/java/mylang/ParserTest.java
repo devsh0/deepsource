@@ -16,7 +16,7 @@ public class ParserTest {
             var parser = new Parser(source);
             parser.parse();
         } catch (RuntimeException error) {
-            assertTrue(error.getMessage().startsWith("Expected a variable"));
+            assertTrue(error.getMessage().startsWith("Invalid input"));
         }
     }
 
