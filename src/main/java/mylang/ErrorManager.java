@@ -6,10 +6,9 @@ import mylang.tokeniser.Type;
 import java.util.ArrayList;
 import java.util.List;
 
-import static mylang.Utils.die;
-
 public class ErrorManager {
     private boolean shouldReportError = true;
+    private boolean canRecover = true;
     private final Tokenizer.State tokenizerState;
     private final List<Problem> problems = new ArrayList<>();
 
@@ -26,21 +25,29 @@ public class ErrorManager {
     }
 
     public void emitFatalError(String errorFmt, Object... args) {
+        canRecover = false;
         var error = String.format(errorFmt, args);
         if (shouldReportError) {
             var problem = new Problem(tokenizerState, error);
             problems.add(problem);
             disableErrorReporting();
         }
-        die(error);
     }
 
-    public void emitSyntaxError(String errorFmt, Object... args) {
+    public boolean canRecover() {
+        return canRecover;
+    }
+
+    public boolean emitSyntaxError(String errorFmt, Object... args) {
         if (shouldReportError) {
             var problem = new Problem(tokenizerState, String.format(errorFmt, args));
             problems.add(problem);
             disableErrorReporting();
         }
+
+        // If we are not at the end of file, we can probably recover.
+        canRecover = !tokenizerState.atEndOfFile();
+        return canRecover;
     }
 
     public List<Problem> problems() {

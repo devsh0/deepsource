@@ -5,10 +5,9 @@ import mylang.ast.Number;
 import mylang.tokeniser.Token;
 import mylang.tokeniser.Tokenizer;
 import mylang.tokeniser.Type;
+
 import java.util.ArrayList;
 import java.util.List;
-
-import static mylang.Utils.die;
 
 public class Parser {
     private final Tokenizer tokenizer;
@@ -80,18 +79,25 @@ public class Parser {
         while (nextTokenResult.get().type() != Type.RBRACE) {
             var nextStmtResult = tryParseNextStatement();
             if (nextStmtResult.failure()) {
-                errorManager.emitSyntaxError(nextStmtResult.message());
+                if (!errorManager.emitSyntaxError(nextStmtResult.message()))
+                    // Cannot recover from this error.
+                    return Signal.fail(nextStmtResult.message());
+
                 var advLineResult = tokenizer.advanceLine();
-                if (advLineResult.failure())
+                if (advLineResult.failure()) {
+                    // Cannot recover from this error.
                     errorManager.emitFatalError(advLineResult.message());
+                    return Signal.fail(advLineResult.message());
+                }
             } else {
                 statementList.add(nextStmtResult.get());
             }
 
             nextTokenResult = tokenizer.peekToken();
             if (nextTokenResult.failure()) {
+                // Cannot recover from this error.
                 errorManager.emitFatalError(nextTokenResult.message());
-                return null;
+                return Signal.fail(nextTokenResult.message());
             }
         }
 
@@ -129,6 +135,10 @@ public class Parser {
         var nextTokenResult = tokenizer.peekToken();
         if (nextTokenResult.failure())
             return Signal.fail(nextTokenResult.message());
+
+        var nextTokenType = nextTokenResult.get().type();
+        if (nextTokenType != Type.RPAREN && nextTokenType != Type.NAME && nextTokenType != Type.NUMBER)
+            return Signal.fail("Expected a name, number, or `)`");
 
         while (nextTokenResult.get().type() != Type.RPAREN) {
             var nameOrNumberResult = tryParseNameOrNumber();
@@ -173,6 +183,9 @@ public class Parser {
     }
 
     private Signal<Statement> tryParseNextStatement() {
+        if (!errorManager.canRecover())
+            return Signal.fail("");
+
         var nextTokenResult = tokenizer.peekToken();
         if (nextTokenResult.failure())
             return Signal.fail(nextTokenResult.message());
@@ -197,7 +210,7 @@ public class Parser {
         var stmtResult = tryParseNextStatement();
         if (stmtResult.failure()) {
             var message = stmtResult.message();
-            errorManager.emitSyntaxError(message);
+            errorManager.emitFatalError(message);
             return new CompilationResult(null, errorManager.problems());
         }
 
